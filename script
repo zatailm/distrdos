@@ -1,0 +1,106 @@
+do.distrib <- function(mahasiswa, dosen, pendamping, type) {
+  # Set seed untuk menjaga konsistensi hasil
+  set.seed(123)
+  
+  # Buat salinan dosen utama, pendamping, dan penguji untuk
+  # menhindari masalah perubahan nilai langsung
+  supr_copy <- dosen
+  asst_copy <- pendamping
+  exmr_copy <- penguji
+  
+  # Inisialisasi dataframe untuk menampung hasil distribusi
+  result <- data.frame(NO = integer(), NIM = character(), MAHASISWA = character(), 
+                       TOPIK = character(), JUDUL = character(), DOSEN_UTAMA = character(),
+                       BIDANG = character(), DOSEN_PENDAMPING = character(), 
+                       DOSEN_PENGUJI = character(), stringsAsFactors = FALSE)
+  
+  # Urutkan dosen berdasarkan batas maksimal kapasitas
+  supr_copy <- supr_copy[order(supr_copy$maksimal, decreasing = TRUE), ]
+  
+  # Iterasi melalui setiap mahasiswa
+  for (i in 1:nrow(mahasiswa)) {
+    # Mengambil topik penelitian mahasiswa
+    topic <- mahasiswa[i, "topik"]
+    # Memilih dosen utama yang cocok dengan topik mahasiswa atau
+    # memiliki topik yang mirip
+    supr_match <- supr_copy[grep(topic, supr_copy$topik), ]
+    # Jika tidak ada dosen utama yang cocok dengan topik, cari
+    # dosen lain yang memiliki bidang paling mirip
+    if (nrow(supr_match) == 0) {
+      # Mencari dosen dengan bidang paling mirip
+      supr_match <- supr_copy[grep(topic, supr_copy$topik, ignore.case = TRUE), ]
+    }
+    # Jika masih tidak ada dosen yang cocok dengan topik, cari
+    # dosen lain yang hampir mencapai batas maksimal kapasitas
+    if (nrow(supr_match) == 0) {
+      # Memastikan hanya dosen dengan batas maksimal > 0 yang dipilih
+      supr_match <- supr_copy[supr_copy$maksimal > 0, ]
+    }
+    # Jika ada dosen yang cocok, pilih satu dosen secara acak
+    if (nrow(supr_match) > 0) {
+      # Filter dosen yang belum mencapai batas maksimal
+      supr_avail <- supr_match[supr_match$maksimal > 0, ]
+      # Jika masih ada dosen yang tersedia
+      if (nrow(supr_avail) > 0) {
+        # Pilih satu dosen secara acak
+        supr_selct <- sample(nrow(supr_avail), 1)
+        # Update batas maksimal dosen terpilih si dalam salinan dosen
+        supr_copy[supr_copy$nidn == supr_avail[supr_selct, "nidn"], "maksimal"] <- 
+          supr_copy[supr_copy$nidn == supr_avail[supr_selct, "nidn"], "maksimal"] - 1
+        # Menambahkan mahasiswa ke dalam dataframe hasil distribusi
+        result <- rbind(
+          result, 
+          data.frame(NO = i, NIM = mahasiswa[i, "nim"], MAHASISWA = mahasiswa[i, "nama"],
+                     TOPIK = mahasiswa[i, "topik"], JUDUL = mahasiswa[i, "judul"], 
+                     DOSEN_UTAMA = supr_avail[supr_selct, "nama"],  
+                     BIDANG = supr_avail[supr_selct, "topik"], DOSEN_PENDAMPING = NA, 
+                     DOSEN_PENGUJI = NA, stringsAsFactors = FALSE))
+      }
+    }
+  }
+  
+  # Menambahkan dosen pendamping dan penguji (jika ada)
+  if (type == 2 | type == 3) {
+    for (k in 1:nrow(result)) {
+      supr <- result[k, "DOSEN_UTAMA"]
+      # Menambahkan dosen pendamping Filter pendamping yang belum mencapai batas maksimal, 
+      # bukan dosen utama, dan tidak memiliki missing value
+      asst <- asst_copy[asst_copy$maksimal > 0 & !is.na(asst_copy$nidn) & asst_copy$nama != supr, ]
+      if (nrow(asst) > 0) {
+        # Pilih satu dosen pendamping secara acak
+        asst_selct <- sample(nrow(asst), 1)
+        # Update batas maksimal dosen pendamping yang terpilih
+        asst_copy[asst_copy$nidn == asst[asst_selct, "nidn"], "maksimal"] <- 
+          asst_copy[asst_copy$nidn == asst[asst_selct, "nidn"], "maksimal"] - 1
+        # Masukkan nama dosen pendamping ke dalam dataframe hasil distribusi
+        result[k, "DOSEN_PENDAMPING"] <- asst[asst_selct, "nama"]
+      }
+    }
+  }
+  
+  if (type == 3) {
+    # Distribusikan dosen penguji
+    for (l in 1:nrow(result)) {
+      # Menemukan dosen penguji yang tersedia
+      supr <- result[l, "DOSEN_UTAMA"]
+      asst <- result[l, "DOSEN_PENDAMPING"]
+      exmr <- exmr_copy[exmr_copy$maksimal > 0 & exmr_copy$nama != supr & exmr_copy$nama != asst, ]
+      if (nrow(exmr) > 0) {
+        # Pilih satu dosen penguji secara acak
+        exmr_selct <- sample(nrow(exmr), 1)
+        # Update batas maksimal dosen penguji yang terpilih
+        exmr_copy[exmr_copy$nidn == exmr[exmr_selct, "nidn"], "maksimal"] <- 
+          exmr_copy[exmr_copy$nidn == exmr[exmr_selct, "nidn"], "maksimal"] - 1
+        # Masukkan nama dosen penguji ke dalam dataframe hasil distribusi
+        result[l, "DOSEN_PENGUJI"] <- exmr[exmr_selct, "nama"]
+      }
+    }
+  }
+  
+  return(result)
+}
+
+# Gunakan type = 1 untuk menentukan dosen utama saja, type = 2 untuk dosen utama dan pendamping, 
+# type = 3 untuk dosen utama sekaligus dosen pendamping dan dosen penguji
+
+hasil <- do.distrib(mahasiswa, dosen, pendamping, type = 3)
